@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Контроль температуры</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 1rem;
+      font-family: sans-serif;
+      background-color: #333;
+      color: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .info-row {
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      margin: 1rem 0;
+      flex-wrap: nowrap;
+    }
+
+    .label {
+      font-size: 2rem;
+      font-weight: bold;
+      white-space: nowrap;
+    }
+
+    #temperature {
+      font-size: 7rem;
+      font-weight: bold;
+      color: #00E5C0;
+      margin: 2rem 0;
+    }
+
+    table {
+      width: 100%;
+      max-width: 1000px;
+      border-collapse: collapse;
+      background: #444;
+    }
+
+    td {
+      border: 1px solid #666;
+      padding: 0.5rem;
+      text-align: center;
+    }
+
+    td input {
+      width: 100%;
+      background: transparent;
+      border: none;
+      color: white;
+      text-align: center;
+      font-size: 1rem;
+      outline: none;
+    }
+
+    .table-row-wrapper {
+      display: flex;
+      align-items: center;
+      margin-bottom: 0.5rem;
+      /*touch-action: pan-y;*/
+    }
+
+    .delete-btn {
+      background: none;
+      color: #f66;
+      font-size: 1.4rem;
+      border: none;
+      margin-left: 0.5rem;
+      cursor: pointer;
+    }
+
+    .delete-btn:hover {
+      color: red;
+    }
+
+    .control-btn {
+      background: #444;
+      color: #00E5C0;
+      border: 1px solid #444;
+      padding: 0.15rem 0.3rem;
+      margin: 0 2px;
+      font-size: 1.2rem;
+      cursor: pointer;
+      transition: background 0.2s ease;
+    }
+
+    .control-btn:hover {
+      background: #00E5C0;
+      color: #000;
+    }
+
+    .table-controls {
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
+      max-width: 1000px;
+      margin-top: 1rem;
+      gap: 1rem;
+    }
+
+    .add-btn, .start-btn {
+      background: #00E5C0;
+      color: #000;
+      font-weight: bold;
+      padding: 0.5rem 1rem;
+      border: none;
+      cursor: pointer;
+      font-size: 1rem;
+      border-radius: 4px;
+    }
+
+    .add-btn:hover, .start-btn:hover {
+      background: #00c9a8;
+    }
+
+    @media (max-width: 600px) {
+       /* Уменьшаем общий шрифт и отступы */
+      #temperature {
+        font-size: 5rem;
+      }
+
+      .label {
+       font-size: 1.7rem;
+      }
+
+      .info-row {
+       gap: 1.2rem;
+     }
+
+     /* Удаляем последнюю ячейку (стрелки перемещения) */
+     td:last-child {
+        display: none;
+      }
+
+     /* Расширяем "режим" и уменьшаем остальные */
+     td:nth-child(2) {
+       width: 40%;
+     }
+
+     td:nth-child(3), /* температура */
+     td:nth-child(5)  /* мощность */ {
+       width: 20%;
+       font-size: 0.9rem;
+      }
+
+     td:nth-child(4) /* время */{
+       width: 25%;
+       font-size: 0.9rem;
+      }
+
+      /* Уменьшаем размер текста в input */
+     td input {
+       font-size: 0.9rem;
+      }
+
+      /* Прячем кнопки стрелок и удаления */
+      .control-btn,
+      .delete-btn {
+        display: none;
+      }
+    }
+
+  </style>
+</head>
+<body>
+
+  <div class="info-row">
+    <div class="label" id="totalTime">06:35:02</div>
+    <div class="label">мощность: <span id="dutyCycle">75%</span></div>
+  </div>
+
+  <div id="temperature">326.2°C</div>
+
+  <div class="info-row">
+    <div class="label" id="mode">прокалка</div>
+    <div class="label" id="setTemperature">400°C</div>
+  </div>
+
+  <div class="info-row">
+    <div class="label" id="modeTime">00:32:12</div>
+    <div class="label">/</div>
+    <div class="label" id="leftTime">00:40:00</div>
+  </div>
+
+  <div id="programContainer" class="drag-container"></div>
+
+  <div class="table-controls">
+    <button class="add-btn" onclick="addRow()">➕ Добавить</button>
+    <button class="start-btn" onclick="startProgram()">▶️ Старт</button>
+  </div>
+
+  <!-- Sortable.js для drag-and-drop -->
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+
+  <script>
+  function addRow(data = {}) {
+    const container = document.getElementById("programContainer");
+
+    const wrapper = document.createElement("div");
+    wrapper.className = "table-row-wrapper";
+
+    const table = document.createElement("table");
+    const row = document.createElement("tr");
+
+    row.innerHTML = `
+      <td class="cell-index">${container.children.length + 1}</td>
+      <td><input type="text" placeholder="режим" value="${data.mode || ''}"></td>
+      <td><input type="text" placeholder="температура" value="${data.temperature || ''}"></td>
+      <td><input type="text" placeholder="00:00:00" value="${data.hold || ''}" oninput="formatTimeInput(this)"></td>
+      <td><input type="text" placeholder="мощность" value="${data.power || ''}"></td>
+      <td>
+        <button class="control-btn" onclick="moveUp(this)">🔼</button>
+        <button class="control-btn" onclick="moveDown(this)">🔽</button>
+      </td>
+    `;
+
+    table.appendChild(row);
+    wrapper.appendChild(table);
+
+    const delBtn = document.createElement("button");
+    delBtn.className = "delete-btn";
+    delBtn.textContent = "❌";
+    delBtn.onclick = () => {
+      wrapper.remove();
+      updateIndexes();
+      saveToLocalStorage();
+    };
+    wrapper.appendChild(delBtn);
+
+    container.appendChild(wrapper);
+    updateIndexes();
+    saveToLocalStorage();
+    enableSwipeToDelete(wrapper);
+  }
+
+  function moveUp(btn) {
+    const rowWrapper = btn.closest(".table-row-wrapper");
+    const prev = rowWrapper.previousElementSibling;
+    if (prev) {
+      rowWrapper.parentNode.insertBefore(rowWrapper, prev);
+      updateIndexes();
+      saveToLocalStorage();
+    }
+  }
+
+  function moveDown(btn) {
+    const rowWrapper = btn.closest(".table-row-wrapper");
+    const next = rowWrapper.nextElementSibling;
+    if (next) {
+      rowWrapper.parentNode.insertBefore(next, rowWrapper);
+      updateIndexes();
+      saveToLocalStorage();
+    }
+  }
+
+  function updateIndexes() {
+    const wrappers = document.querySelectorAll(".table-row-wrapper");
+    wrappers.forEach((wrapper, i) => {
+      const indexCell = wrapper.querySelector(".cell-index");
+      indexCell.textContent = i + 1;
+    });
+  }
+
+  function formatTimeInput(input) {
+    let digits = input.value.replace(/\D/g, "").slice(0, 6);
+    let formatted = "";
+    if (digits.length > 0) formatted += digits.substring(0, 2);
+    if (digits.length > 2) formatted += ":" + digits.substring(2, 4);
+    if (digits.length > 4) formatted += ":" + digits.substring(4, 6);
+    input.value = formatted;
+  }
+
+  function startProgram() {
+    const wrappers = document.querySelectorAll(".table-row-wrapper");
+    const program = [];
+
+    for (let wrapper of wrappers) {
+      const inputs = wrapper.querySelectorAll("input");
+      const mode = inputs[0].value.trim();
+      const temp = parseFloat(inputs[1].value);
+      const time = inputs[2].value.trim();
+      const power = parseFloat(inputs[3].value);
+
+      if (!mode || isNaN(temp) || temp < 0 || temp > 1000 ||
+          !/^(\d{2}):(\d{2}):(\d{2})$/.test(time) ||
+          isNaN(power) || power < 0 || power > 100) {
+        alert("Пожалуйста, проверьте правильность всех данных.");
+        return;
+      }
+
+      program.push({
+        mode: mode,
+        set_temperature: temp,
+        hold_time: time,
+        power: power
+      });
+    }
+
+    console.log("Программа готова к отправке:", program);
+    // fetch('/start', {...})
+  }
+
+  function saveToLocalStorage() {
+    const wrappers = document.querySelectorAll(".table-row-wrapper");
+    const saved = [];
+
+    wrappers.forEach(wrapper => {
+      const inputs = wrapper.querySelectorAll("input");
+      saved.push({
+        mode: inputs[0].value,
+        temperature: inputs[1].value,
+        hold: inputs[2].value,
+        power: inputs[3].value
+      });
+    });
+
+    localStorage.setItem("temperatureProgram", JSON.stringify(saved));
+  }
+
+  function loadFromLocalStorage() {
+    const saved = localStorage.getItem("temperatureProgram");
+    if (saved) {
+      const data = JSON.parse(saved);
+      data.forEach(row => addRow(row));
+    } else {
+      addRow();
+    }
+  }
+
+  async function updateStatus() {
+    try {
+      const response = await fetch('/status');
+      const data = await response.json();
+
+      document.getElementById('temperature').textContent = `${data.temperature.toFixed(1)}°C`;
+      document.getElementById('mode').textContent = data.mode;
+      document.getElementById('setTemperature').textContent = `${data.set_temperature}°C`;
+      document.getElementById('modeTime').textContent = data.mode_time;
+      document.getElementById('leftTime').textContent = data.time_left;
+      document.getElementById('totalTime').textContent = data.total_time;
+      document.getElementById('dutyCycle').textContent = `${data.duty_cycle}%`;
+    } catch (error) {
+      console.error('Ошибка получения данных:', error);
+    }
+  }
+
+  // Функция для инициализации drag-and-drop (задержка перетаскивания)
+  function enableDragAndDrop() {
+    new Sortable(document.getElementById('programContainer'), {
+      animation: 150,
+      handle: '.table-row-wrapper',
+      delay: 150, // 150ms задержка для перетаскивания
+      touchStartThreshold: 10, // Устанавливаем минимальный порог для начала drag
+      onEnd: () => {
+        updateIndexes();
+        saveToLocalStorage();
+      }
+    });
+  }
+
+  function enableSwipeToDelete(wrapper) {
+    let startX = 0;
+
+    wrapper.addEventListener('touchstart', (e) => {
+      startX = e.touches[0].clientX;
+    });
+
+    wrapper.addEventListener('touchend', (e) => {
+      const endX = e.changedTouches[0].clientX;
+      const diff = startX - endX;
+      if (Math.abs(diff) > 80) {
+        wrapper.remove();
+        updateIndexes();
+        saveToLocalStorage();
+      }
+    });
+  }
+
+  setInterval(updateStatus, 2000);
+  updateStatus();
+
+  window.onload = () => {
+    loadFromLocalStorage();
+    enableDragAndDrop();
+  };
+</script>
+
+</body>
+</html>
